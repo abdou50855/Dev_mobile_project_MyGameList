@@ -4,7 +4,7 @@ import { getFirestore } from 'firebase/firestore';
 
 // Configuration Firebase - MyGameList-App
 const firebaseConfig = {
-    apiKey: "AIzaSyCNtARBhA_bWaW2IHq3htvtWUWCRZbfgK0",
+    apiKey: "AIzaSyBLg3QsXwaL6kJAKbP3y2BaBe2kxpJjchw",
     authDomain: "mygamelist-app-b6ee7.firebaseapp.com",
     projectId: "mygamelist-app-b6ee7",
     storageBucket: "mygamelist-app-b6ee7.firebasestorage.app",
