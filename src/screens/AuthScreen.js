@@ -1,17 +1,16 @@
-import React, { useState } from 'react';
-import { 
-  View, 
-  Text, 
-  TextInput, 
-  TouchableOpacity, 
-  StyleSheet, 
-  Alert,
+import React, { useState, useRef, useCallback, useEffect } from 'react';
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
   ActivityIndicator,
-  Animated
+  Animated,
 } from 'react-native';
-import { 
-  signInWithEmailAndPassword, 
-  createUserWithEmailAndPassword 
+import {
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
 } from 'firebase/auth';
 import { auth } from '../services/firebaseConfig';
 
@@ -20,101 +19,108 @@ const AuthScreen = ({ navigation }) => {
   const [password, setPassword] = useState('');
   const [isLogin, setIsLogin] = useState(true);
   const [loading, setLoading] = useState(false);
-  const fadeAnim = useState(new Animated.Value(1))[0];
+  const [errorMsg, setErrorMsg] = useState('');
+  const [successMsg, setSuccessMsg] = useState('');
 
-  const switchMode = () => {
-    // Animation de fondu
+  const fadeAnim = useRef(new Animated.Value(1)).current;
+
+  const validateEmail = (email) => /^\S+@\S+\.\S+$/.test(email);
+
+  const translateFirebaseError = (code) => {
+    const map = {
+      'auth/invalid-email': 'Adresse email invalide',
+      'auth/user-not-found': 'Ce compte n’existe pas',
+      'auth/wrong-password': 'Mot de passe incorrect',
+      'auth/email-already-in-use': 'Cet email est déjà utilisé',
+      'auth/weak-password': 'Mot de passe trop faible',
+    };
+    return map[code] || 'Une erreur est survenue';
+  };
+
+  const switchMode = useCallback(() => {
     Animated.timing(fadeAnim, {
       toValue: 0,
       duration: 200,
       useNativeDriver: true,
     }).start(() => {
-      setIsLogin(!isLogin);
+      setIsLogin((prev) => !prev);
       setEmail('');
       setPassword('');
+      setErrorMsg('');
+      setSuccessMsg('');
+
       Animated.timing(fadeAnim, {
         toValue: 1,
         duration: 300,
         useNativeDriver: true,
       }).start();
     });
+  }, []);
+
+  const showError = (msg) => {
+    setErrorMsg(msg);
+    setSuccessMsg('');
+
+    setTimeout(() => setErrorMsg(''), 4000);
   };
 
-  const handleLogin = async () => {
-    if (!email || !password) {
-      Alert.alert('Erreur', 'Veuillez remplir tous les champs');
-      return;
-    }
+  const showSuccess = (msg) => {
+    setSuccessMsg(msg);
+    setErrorMsg('');
+
+    setTimeout(() => setSuccessMsg(''), 4000);
+  };
+
+  const handleSubmit = async () => {
+    if (!email || !password)
+      return showError('Veuillez remplir tous les champs');
+
+    if (!validateEmail(email))
+      return showError('Veuillez saisir un email valide');
+
+    if (!isLogin && password.length < 6)
+      return showError('Le mot de passe doit faire au moins 6 caractères');
 
     setLoading(true);
     try {
-      await signInWithEmailAndPassword(auth, email, password);
-      Alert.alert('Succès', 'Connexion réussie ! 🎉');
-      navigation.navigate('Home');
+      if (isLogin) {
+        await signInWithEmailAndPassword(auth, email, password);
+        showSuccess('Connexion réussie 🎉');
+        setTimeout(() => navigation.navigate('Home'), 1200);
+      } else {
+        await createUserWithEmailAndPassword(auth, email, password);
+        showSuccess('Compte créé avec succès 🎉 Vous pouvez vous connecter.');
+        setTimeout(() => switchMode(), 1500);
+      }
     } catch (error) {
-      Alert.alert('Erreur', error.message);
+      showError(translateFirebaseError(error.code));
     } finally {
       setLoading(false);
     }
   };
 
-  const handleSignup = async () => {
-    if (!email || !password) {
-      Alert.alert('Erreur', 'Veuillez remplir tous les champs');
-      return;
-    }
-
-    if (password.length < 6) {
-      Alert.alert('Erreur', 'Le mot de passe doit faire au moins 6 caractères');
-      return;
-    }
-
-    setLoading(true);
-    try {
-      await createUserWithEmailAndPassword(auth, email, password);
-      Alert.alert('Succès', 'Compte créé avec succès ! ✅\nVous pouvez maintenant vous connecter.');
-      
-      // Animation et retour au login
-      setTimeout(() => {
-        switchMode(); // Retour au login avec animation
-        setLoading(false);
-      }, 2000);
-      
-    } catch (error) {
-      Alert.alert('Erreur', error.message);
-      setLoading(false);
-    }
-  };
-
-  const handleSubmit = () => {
-    if (isLogin) {
-      handleLogin();
-    } else {
-      handleSignup();
-    }
-  };
-
   return (
     <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
-      {/* En-tête avec logo et titre */}
       <View style={styles.header}>
         <Text style={styles.logo}>🎮</Text>
         <Text style={styles.appName}>MyGameList</Text>
       </View>
 
-      {/* Carte d'authentification */}
       <View style={styles.card}>
-        {/* Titre qui change selon le mode */}
+        
+        {/* ALERTES */}
+        {errorMsg ? <Text style={styles.errorMsg}>{errorMsg}</Text> : null}
+        {successMsg ? <Text style={styles.successMsg}>{successMsg}</Text> : null}
+
         <Text style={styles.title}>
           {isLogin ? 'Connexion' : 'Inscription'}
         </Text>
         <Text style={styles.subtitle}>
-          {isLogin 
-            ? 'Connectez-vous pour accéder à votre collection' 
+          {isLogin
+            ? 'Connectez-vous pour accéder à votre collection'
             : 'Créez votre compte pour commencer'}
         </Text>
 
-        {/* Formulaire */}
         <View style={styles.form}>
           <TextInput
             style={styles.input}
@@ -126,55 +132,47 @@ const AuthScreen = ({ navigation }) => {
             keyboardType="email-address"
             editable={!loading}
           />
-          
+
           <TextInput
             style={styles.input}
             placeholder="Mot de passe"
             placeholderTextColor="#999"
+            secureTextEntry
             value={password}
             onChangeText={setPassword}
-            secureTextEntry
             editable={!loading}
           />
-          
+
           {loading ? (
             <View style={styles.loadingContainer}>
               <ActivityIndicator size="large" color="#6C63FF" />
               <Text style={styles.loadingText}>
-                {isLogin ? 'Connexion en cours...' : 'Création du compte...'}
+                {isLogin ? 'Connexion...' : 'Création du compte...'}
               </Text>
             </View>
           ) : (
-            <TouchableOpacity 
-              style={styles.submitButton} 
-              onPress={handleSubmit}
-              disabled={loading}
-            >
+            <TouchableOpacity style={styles.submitButton} onPress={handleSubmit}>
               <Text style={styles.submitButtonText}>
-                {isLogin ? 'Se connecter' : 'S\'inscrire'}
+                {isLogin ? 'Se connecter' : 'S’inscrire'}
               </Text>
             </TouchableOpacity>
           )}
         </View>
 
-        {/* Lien pour switcher */}
-        <TouchableOpacity 
-          style={styles.switchContainer} 
+        <TouchableOpacity
+          style={styles.switchContainer}
           onPress={switchMode}
           disabled={loading}
         >
           <Text style={styles.switchText}>
-            {isLogin 
-              ? 'Pas encore de compte ? ' 
-              : 'Déjà un compte ? '}
+            {isLogin ? 'Pas encore de compte ? ' : 'Déjà un compte ? '}
             <Text style={styles.switchLink}>
-              {isLogin ? 'S\'inscrire' : 'Se connecter'}
+              {isLogin ? 'S’inscrire' : 'Se connecter'}
             </Text>
           </Text>
         </TouchableOpacity>
       </View>
 
-      {/* Footer */}
       <View style={styles.footer}>
         <Text style={styles.footerText}>
           Gérez votre collection de jeux vidéo
@@ -191,97 +189,65 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     padding: 20,
   },
-  header: {
-    alignItems: 'center',
-    marginBottom: 40,
-  },
-  logo: {
-    fontSize: 60,
-    marginBottom: 10,
-  },
-  appName: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: '#6C63FF',
-  },
+  header: { alignItems: 'center', marginBottom: 40 },
+  logo: { fontSize: 60, marginBottom: 10 },
+  appName: { fontSize: 32, fontWeight: 'bold', color: '#6C63FF' },
   card: {
     backgroundColor: '#16213e',
     borderRadius: 20,
     padding: 30,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.3,
-    shadowRadius: 20,
     elevation: 10,
   },
-  title: {
-    fontSize: 28,
-    fontWeight: 'bold',
+  errorMsg: {
+    backgroundColor: '#ff4f4f',
     color: '#fff',
+    padding: 10,
+    borderRadius: 8,
+    marginBottom: 15,
     textAlign: 'center',
-    marginBottom: 10,
+    fontWeight: 'bold',
   },
-  subtitle: {
-    fontSize: 14,
-    color: '#aaa',
+  successMsg: {
+    backgroundColor: '#32d27f',
+    color: '#fff',
+    padding: 10,
+    borderRadius: 8,
+    marginBottom: 15,
     textAlign: 'center',
-    marginBottom: 30,
+    fontWeight: 'bold',
   },
-  form: {
-    marginBottom: 20,
-  },
+  title: { fontSize: 28, fontWeight: 'bold', color: '#fff', textAlign: 'center' },
+  subtitle: { fontSize: 14, color: '#aaa', textAlign: 'center', marginBottom: 30 },
+  form: { marginBottom: 20 },
   input: {
     backgroundColor: '#0f3460',
     color: '#fff',
     padding: 15,
     borderRadius: 10,
     marginBottom: 15,
-    fontSize: 16,
     borderWidth: 1,
+    fontSize: 16,
     borderColor: '#6C63FF',
   },
-  loadingContainer: {
-    alignItems: 'center',
-    padding: 20,
-  },
-  loadingText: {
-    color: '#6C63FF',
-    marginTop: 15,
-    fontSize: 16,
-  },
+  loadingContainer: { alignItems: 'center', padding: 20 },
+  loadingText: { color: '#6C63FF', marginTop: 15, fontSize: 16 },
   submitButton: {
     backgroundColor: '#6C63FF',
     padding: 18,
     borderRadius: 10,
     alignItems: 'center',
   },
-  submitButtonText: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
+  submitButtonText: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
   switchContainer: {
     padding: 15,
     alignItems: 'center',
     borderTopWidth: 1,
     borderTopColor: '#2a2d43',
   },
-  switchText: {
-    color: '#aaa',
-    fontSize: 16,
-  },
-  switchLink: {
-    color: '#6C63FF',
-    fontWeight: 'bold',
-  },
-  footer: {
-    marginTop: 30,
-    alignItems: 'center',
-  },
-  footerText: {
-    color: '#666',
-    fontSize: 14,
-  },
+  switchText: { color: '#aaa', fontSize: 16 },
+  switchLink: { color: '#6C63FF', fontWeight: 'bold' },
+  footer: { marginTop: 30, alignItems: 'center' },
+  footerText: { color: '#666', fontSize: 14 },
 });
 
 export default AuthScreen;
