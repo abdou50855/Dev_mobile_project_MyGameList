@@ -12,15 +12,15 @@ import {
   ActivityIndicator
 } from 'react-native';
 import { auth } from '../services/firebaseConfig';
-import { 
-  collection, 
-  addDoc, 
-  getDocs, 
-  query, 
-  where, 
-  deleteDoc, 
-  doc, 
-  updateDoc 
+import {
+  collection,
+  addDoc,
+  getDocs,
+  query,
+  where,
+  deleteDoc,
+  doc,
+  updateDoc
 } from 'firebase/firestore';
 import { db } from '../services/firebaseConfig';
 
@@ -29,12 +29,16 @@ const GamesScreen = ({ navigation }) => {
   const [loading, setLoading] = useState(true);
   const [modalVisible, setModalVisible] = useState(false);
   const [editingGame, setEditingGame] = useState(null);
-  
+
   // Formulaire
   const [title, setTitle] = useState('');
   const [platform, setPlatform] = useState('PS5');
   const [status, setStatus] = useState('backlog');
   const [search, setSearch] = useState('');
+
+  // Filtres
+  const [filterPlatform, setFilterPlatform] = useState('');
+  const [filterStatus, setFilterStatus] = useState('');
 
   const platforms = ['PS5', 'Xbox Series X', 'Nintendo Switch', 'PC', 'Mobile'];
   const statuses = [
@@ -50,6 +54,7 @@ const GamesScreen = ({ navigation }) => {
 
   const loadGames = async () => {
     try {
+      setLoading(true);
       const user = auth.currentUser;
       if (!user) return;
 
@@ -57,12 +62,12 @@ const GamesScreen = ({ navigation }) => {
         collection(db, 'games'),
         where('userId', '==', user.uid)
       );
-      
+
       const querySnapshot = await getDocs(gamesQuery);
       const gamesList = [];
-      
-      querySnapshot.forEach((doc) => {
-        gamesList.push({ id: doc.id, ...doc.data() });
+
+      querySnapshot.forEach((docSnap) => {
+        gamesList.push({ id: docSnap.id, ...docSnap.data() });
       });
 
       setGames(gamesList);
@@ -95,17 +100,15 @@ const GamesScreen = ({ navigation }) => {
       };
 
       if (editingGame) {
-        // Mettre à jour
         await updateDoc(doc(db, 'games', editingGame.id), gameData);
         Alert.alert('Succès', 'Jeu mis à jour');
       } else {
-        // Ajouter
         await addDoc(collection(db, 'games'), gameData);
         Alert.alert('Succès', 'Jeu ajouté');
       }
 
       resetForm();
-      loadGames();
+      await loadGames();
       setModalVisible(false);
     } catch (error) {
       Alert.alert('Erreur', error.message);
@@ -118,13 +121,13 @@ const GamesScreen = ({ navigation }) => {
       'Supprimer ce jeu ?',
       [
         { text: 'Annuler', style: 'cancel' },
-        { 
-          text: 'Supprimer', 
+        {
+          text: 'Supprimer',
           style: 'destructive',
           onPress: async () => {
             try {
               await deleteDoc(doc(db, 'games', gameId));
-              loadGames();
+              await loadGames();
             } catch (error) {
               Alert.alert('Erreur', 'Impossible de supprimer');
             }
@@ -149,8 +152,11 @@ const GamesScreen = ({ navigation }) => {
     setEditingGame(null);
   };
 
+  // Filtrage combiné (recherche + plateforme + statut)
   const filteredGames = games.filter(game =>
-    game.title.toLowerCase().includes(search.toLowerCase())
+    game.title.toLowerCase().includes(search.toLowerCase()) &&
+    (filterPlatform === '' || game.platform === filterPlatform) &&
+    (filterStatus === '' || game.status === filterStatus)
   );
 
   const getStatusColor = (statusValue) => {
@@ -177,7 +183,7 @@ const GamesScreen = ({ navigation }) => {
       {/* En-tête */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>🎮 Ma Collection</Text>
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.addButton}
           onPress={() => {
             resetForm();
@@ -197,6 +203,58 @@ const GamesScreen = ({ navigation }) => {
           value={search}
           onChangeText={setSearch}
         />
+      </View>
+
+      {/* Titre et filtres plateforme */}
+      <View style={styles.filterBlock}>
+        <Text style={styles.filterTitle}>Plateforme</Text>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.filtersContent}
+        >
+          <TouchableOpacity
+            style={[styles.filterButton, filterPlatform === '' && styles.filterSelected]}
+            onPress={() => setFilterPlatform('')}
+          >
+            <Text style={styles.filterText}>Toutes</Text>
+          </TouchableOpacity>
+          {platforms.map((plat) => (
+            <TouchableOpacity
+              key={plat}
+              style={[styles.filterButton, filterPlatform === plat && styles.filterSelected]}
+              onPress={() => setFilterPlatform(plat)}
+            >
+              <Text style={styles.filterText}>{plat}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </View>
+
+      {/* Titre et filtres statut */}
+      <View style={styles.filterBlock}>
+        <Text style={styles.filterTitle}>Statut</Text>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.filtersContent}
+        >
+          <TouchableOpacity
+            style={[styles.filterButton, filterStatus === '' && styles.filterSelected]}
+            onPress={() => setFilterStatus('')}
+          >
+            <Text style={styles.filterText}>Tous</Text>
+          </TouchableOpacity>
+          {statuses.map((stat) => (
+            <TouchableOpacity
+              key={stat.value}
+              style={[styles.filterButton, filterStatus === stat.value && styles.filterSelected]}
+              onPress={() => setFilterStatus(stat.value)}
+            >
+              <Text style={styles.filterText}>{stat.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
       </View>
 
       {/* Liste des jeux */}
@@ -224,13 +282,13 @@ const GamesScreen = ({ navigation }) => {
                 </View>
               </View>
               <View style={styles.gameActions}>
-                <TouchableOpacity 
+                <TouchableOpacity
                   style={styles.editButton}
                   onPress={() => handleEditGame(item)}
                 >
                   <Text style={styles.editButtonText}>✏️</Text>
                 </TouchableOpacity>
-                <TouchableOpacity 
+                <TouchableOpacity
                   style={styles.deleteButton}
                   onPress={() => handleDeleteGame(item.id)}
                 >
@@ -260,6 +318,7 @@ const GamesScreen = ({ navigation }) => {
               <TextInput
                 style={styles.input}
                 placeholder="Ex: The Legend of Zelda"
+                placeholderTextColor="#999"
                 value={title}
                 onChangeText={setTitle}
               />
@@ -308,13 +367,13 @@ const GamesScreen = ({ navigation }) => {
               </View>
 
               <View style={styles.modalButtons}>
-                <TouchableOpacity 
+                <TouchableOpacity
                   style={styles.cancelButton}
                   onPress={() => setModalVisible(false)}
                 >
                   <Text style={styles.cancelButtonText}>Annuler</Text>
                 </TouchableOpacity>
-                <TouchableOpacity 
+                <TouchableOpacity
                   style={styles.saveButton}
                   onPress={handleAddGame}
                 >
@@ -382,6 +441,52 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#6C63FF',
   },
+
+  /* Filter blocks: reduced spacing between blocks and titles */
+  filterBlock: {
+    marginTop: 8,
+    marginBottom: 6,
+    paddingHorizontal: 12,
+  },
+  filterTitle: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '700',
+    marginBottom: 6,
+  },
+  filtersContent: {
+    paddingVertical: 2,
+    paddingRight: 10,
+  },
+
+  /* Filters compact */
+  filtersRow: {
+    marginTop: 10,
+    marginBottom: 10,
+  },
+  filterButton: {
+    backgroundColor: '#0f3460',
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#2a2d43',
+    marginRight: 8,
+    minWidth: 80,
+    height: 32,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  filterSelected: {
+    backgroundColor: '#6C63FF',
+    borderColor: '#6C63FF',
+  },
+  filterText: {
+    color: '#fff',
+    fontWeight: '600',
+    fontSize: 12,
+  },
+
   emptyContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -502,19 +607,26 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#6C63FF',
   },
+
+  /* Compact options in modal */
   platformContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 10,
     marginBottom: 10,
   },
   platformOption: {
     backgroundColor: '#0f3460',
-    paddingHorizontal: 15,
-    paddingVertical: 10,
-    borderRadius: 20,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: '#2a2d43',
+    marginRight: 8,
+    marginBottom: 8,
+    minWidth: 90,
+    height: 34,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   platformSelected: {
     backgroundColor: '#6C63FF',
@@ -522,32 +634,41 @@ const styles = StyleSheet.create({
   },
   platformText: {
     color: '#aaa',
+    fontSize: 12,
   },
   platformTextSelected: {
     color: '#fff',
     fontWeight: 'bold',
+    fontSize: 12,
   },
+
   statusContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 10,
     marginBottom: 25,
   },
   statusOption: {
-    paddingHorizontal: 15,
-    paddingVertical: 10,
-    borderRadius: 20,
-    minWidth: 100,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 14,
+    minWidth: 90,
+    height: 34,
     alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 8,
+    marginBottom: 8,
   },
   statusText: {
     color: '#fff',
     fontWeight: '600',
+    fontSize: 12,
   },
   statusTextSelected: {
     color: '#fff',
     fontWeight: 'bold',
+    fontSize: 12,
   },
+
   modalButtons: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -555,7 +676,7 @@ const styles = StyleSheet.create({
   },
   cancelButton: {
     backgroundColor: '#ff4757',
-    padding: 15,
+    padding: 12,
     borderRadius: 10,
     flex: 1,
     marginRight: 10,
@@ -568,7 +689,7 @@ const styles = StyleSheet.create({
   },
   saveButton: {
     backgroundColor: '#6C63FF',
-    padding: 15,
+    padding: 12,
     borderRadius: 10,
     flex: 1,
     marginLeft: 10,
